@@ -32,8 +32,10 @@ if [[ ! -d "$BACKEND_DIR/.venv" ]]; then
 fi
 
 info "Installing Python dependencies…"
-"$BACKEND_DIR/.venv/bin/pip" install -q --upgrade pip
-"$BACKEND_DIR/.venv/bin/pip" install -q -r "$BACKEND_DIR/requirements.txt"
+"$BACKEND_DIR/.venv/bin/pip" install --upgrade pip --quiet
+# Install without -q so failures surface. Ray is large and can fail silently
+# if pip's dependency resolver hits a conflict — you'll see it here instead.
+"$BACKEND_DIR/.venv/bin/pip" install -r "$BACKEND_DIR/requirements.txt"
 
 info "Starting FastAPI backend on :8000"
 cd "$BACKEND_DIR"
