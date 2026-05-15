@@ -149,6 +149,7 @@ activemq-data/
 
 # Environments
 .env
+.env.example
 .envrc
 .venv
 env/
@@ -216,3 +217,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# PolicyLab generated files
+*.db
+*.db-shm
+*.db-wal
+backend/.venv/
+backend/artifacts/
+frontend/node_modules/
+frontend/dist/
+backend.log
+frontend.log
