@@ -17,6 +17,7 @@ const ANALYSIS_LABELS: Record<string, string> = {
   housing_affordability: "Housing Affordability Analysis",
   labor_trends: "Labor Market Trends",
   census_demographics: "Census Demographic Profile",
+  world_bank_indicators: "World Bank Development & Climate Indicators",
 };
 
 export default function ExperimentDetail() {
@@ -161,7 +162,9 @@ function ResultsSection({ artifact, analysisType }: { artifact: Artifact; analys
       {data.summary != null && <SummaryCard summary={data.summary as Record<string, unknown>} />}
 
       {analysisType === "housing_affordability" && (
-        <HousingCharts data={data} />
+        data.chart_type === "housing_acs"
+          ? <HousingACSCharts data={data} />
+          : <HousingCharts data={data} />
       )}
       {analysisType === "labor_trends" && (
         <LaborCharts data={data} />
@@ -169,12 +172,15 @@ function ResultsSection({ artifact, analysisType }: { artifact: Artifact; analys
       {analysisType === "census_demographics" && (
         <CensusCharts data={data} />
       )}
+      {analysisType === "world_bank_indicators" && (
+        <WorldBankCharts data={data} />
+      )}
     </div>
   );
 }
 
 function SummaryCard({ summary }: { summary: Record<string, unknown> }) {
-  const { key_finding, ...rest } = summary;
+  const { key_finding, key_findings, ...rest } = summary;
   return (
     <div className="card p-5">
       <h2 className="text-sm font-semibold text-slate-200 mb-3">Key Findings</h2>
@@ -182,6 +188,15 @@ function SummaryCard({ summary }: { summary: Record<string, unknown> }) {
         <p className="text-sm text-slate-300 leading-relaxed mb-4 border-l-2 border-brand-500 pl-3">
           {String(key_finding)}
         </p>
+      )}
+      {Array.isArray(key_findings) && key_findings.length > 0 && (
+        <ul className="mb-4 space-y-1.5">
+          {(key_findings as string[]).map((f, i) => (
+            <li key={i} className="text-sm text-slate-300 leading-relaxed border-l-2 border-brand-500 pl-3">
+              {f}
+            </li>
+          ))}
+        </ul>
       )}
       <div className="grid grid-cols-3 gap-3">
         {Object.entries(rest).map(([k, v]) => (
@@ -198,6 +213,164 @@ function SummaryCard({ summary }: { summary: Record<string, unknown> }) {
 }
 
 const PIE_COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"];
+const TREND_COLORS = ["#ef4444","#f59e0b","#6366f1","#10b981","#8b5cf6","#06b6d4"];
+
+type ACSStateTrend = {
+  fips: string;
+  state: string;
+  series: Array<{ year: number; cost_burden_rate: number; severe_burden_rate: number; total_renters: number; unreliable: boolean }>;
+  current_rate: number;
+  current_severe: number;
+  trend_slope: number;
+  improving: boolean;
+  pre_covid_avg: number | null;
+  post_covid_avg: number | null;
+};
+
+function HousingACSCharts({ data }: { data: Record<string, unknown> }) {
+  const stateTrends   = (data.state_trends        ?? []) as ACSStateTrend[];
+  const snapshot      = (data.national_snapshot   ?? []) as Array<Record<string, unknown>>;
+  const yearlyAvg     = (data.yearly_national_avg ?? []) as Array<Record<string, unknown>>;
+
+  // National trend: two lines — burdened and severely burdened
+  const nationalTrend = yearlyAvg.map((y) => ({
+    year:             y.year as number,
+    "Cost burdened":  +((y.avg_burden_rate as number) * 100).toFixed(1),
+    "Severely burdened": +((y.avg_severe_rate as number) * 100).toFixed(1),
+  }));
+
+  // Top 15 states by current burden rate — horizontal bar
+  const rankingData = snapshot.slice(0, 15).map((s) => ({
+    state:  s.state as string,
+    rate:   +((s.rate as number) * 100).toFixed(1),
+    severe: +((s.severe_rate as number) * 100).toFixed(1),
+    trend:  s.trend_dir as string,
+  })).reverse();   // recharts vertical bar reads bottom-up
+
+  // Top 6 highest-burden states: time series
+  const topStates = stateTrends.slice(0, 6);
+  const allYears  = [...new Set(stateTrends.flatMap((t) => t.series.map((s) => s.year)))].sort();
+  const trendPivot = allYears.map((year) => {
+    const row: Record<string, unknown> = { year };
+    topStates.forEach((t) => {
+      const pt = t.series.find((s) => s.year === year);
+      if (pt && !pt.unreliable) row[t.state] = +((pt.cost_burden_rate) * 100).toFixed(1);
+    });
+    return row;
+  });
+
+  return (
+    <div className="space-y-4">
+      {/* National trend */}
+      <div className="card p-5">
+        <div className="flex items-center gap-2 mb-1">
+          <h3 className="text-sm font-semibold text-slate-200">National Cost Burden Rate</h3>
+          <span className="badge bg-blue-500/15 text-blue-400 border border-blue-500/20 text-xs ml-auto">
+            Census ACS B25070
+          </span>
+        </div>
+        <p className="text-xs text-slate-500 mb-4">
+          Population-weighted average across sampled states — % of renters paying above income threshold
+        </p>
+        <ResponsiveContainer width="100%" height={220}>
+          <LineChart data={nationalTrend}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+            <XAxis dataKey="year" tick={{ fill: "#94a3b8", fontSize: 10 }} />
+            <YAxis tickFormatter={(v) => `${v}%`} tick={{ fill: "#94a3b8", fontSize: 10 }} domain={[0, 70]} />
+            <Tooltip formatter={(v: number) => [`${v}%`]} contentStyle={{ background: "#1e293b", border: "1px solid #334155" }} />
+            <Legend />
+            <Line type="monotone" dataKey="Cost burdened"    stroke="#f59e0b" strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="Severely burdened" stroke="#ef4444" strokeWidth={2} dot={false} strokeDasharray="4 2" />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        {/* State rankings */}
+        <div className="card p-5">
+          <h3 className="text-sm font-semibold text-slate-200 mb-1">State Rankings (Latest Year)</h3>
+          <p className="text-xs text-slate-500 mb-4">% renters cost burdened — top 15 highest</p>
+          <ResponsiveContainer width="100%" height={320}>
+            <BarChart data={rankingData} layout="vertical" margin={{ left: 4, right: 32 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
+              <XAxis type="number" domain={[0, 70]} tickFormatter={(v) => `${v}%`} tick={{ fill: "#94a3b8", fontSize: 10 }} />
+              <YAxis type="category" dataKey="state" tick={{ fill: "#94a3b8", fontSize: 10 }} width={110} />
+              <Tooltip
+                formatter={(v: number, name: string) => [`${v}%`, name]}
+                contentStyle={{ background: "#1e293b", border: "1px solid #334155" }}
+              />
+              <Bar dataKey="rate" name="Cost burdened" fill="#f59e0b" radius={[0, 3, 3, 0]} />
+              <Bar dataKey="severe" name="Severely burdened" fill="#ef4444" radius={[0, 3, 3, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Top-6 state time series */}
+        <div className="card p-5">
+          <h3 className="text-sm font-semibold text-slate-200 mb-1">Cost Burden Trend — Highest States</h3>
+          <p className="text-xs text-slate-500 mb-4">Top 6 states by current cost burden rate</p>
+          <ResponsiveContainer width="100%" height={320}>
+            <LineChart data={trendPivot}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+              <XAxis dataKey="year" tick={{ fill: "#94a3b8", fontSize: 10 }} />
+              <YAxis tickFormatter={(v) => `${v}%`} tick={{ fill: "#94a3b8", fontSize: 10 }} domain={[20, 70]} />
+              <Tooltip formatter={(v: number) => [`${v}%`]} contentStyle={{ background: "#1e293b", border: "1px solid #334155" }} />
+              <Legend />
+              {topStates.map((t, i) => (
+                <Line
+                  key={t.state}
+                  type="monotone"
+                  dataKey={t.state}
+                  stroke={TREND_COLORS[i % TREND_COLORS.length]}
+                  strokeWidth={2}
+                  dot={false}
+                  connectNulls
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Pre/post-COVID comparison table */}
+      {stateTrends.some((t) => t.pre_covid_avg !== null && t.post_covid_avg !== null) && (
+        <div className="card p-5 overflow-auto">
+          <h3 className="text-sm font-semibold text-slate-200 mb-3">Pre vs Post-COVID Comparison</h3>
+          <p className="text-xs text-slate-500 mb-3">Average cost burden rate before 2020 vs 2021 onward (2020 ACS data not released)</p>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-slate-700">
+                <th className="text-left py-2 pr-4 font-medium text-slate-300">State</th>
+                <th className="text-right py-2 px-3 font-medium text-slate-300">Pre-COVID avg</th>
+                <th className="text-right py-2 px-3 font-medium text-slate-300">Post-COVID avg</th>
+                <th className="text-right py-2 px-3 font-medium text-slate-300">Change</th>
+                <th className="text-right py-2 px-3 font-medium text-slate-300">Trend</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stateTrends
+                .filter((t) => t.pre_covid_avg !== null && t.post_covid_avg !== null)
+                .map((t) => {
+                  const delta = (t.post_covid_avg! - t.pre_covid_avg!) * 100;
+                  return (
+                    <tr key={t.fips} className="border-b border-slate-800 hover:bg-slate-800/30">
+                      <td className="py-1.5 pr-4 font-medium text-slate-200">{t.state}</td>
+                      <td className="text-right py-1.5 px-3 tabular-nums text-slate-400">{(t.pre_covid_avg! * 100).toFixed(1)}%</td>
+                      <td className="text-right py-1.5 px-3 tabular-nums text-slate-400">{(t.post_covid_avg! * 100).toFixed(1)}%</td>
+                      <td className={`text-right py-1.5 px-3 tabular-nums font-medium ${delta < 0 ? "text-emerald-400" : delta > 0 ? "text-red-400" : "text-slate-500"}`}>
+                        {delta > 0 ? "+" : ""}{delta.toFixed(1)} pp
+                      </td>
+                      <td className="text-right py-1.5 px-3 text-slate-400">{t.improving ? "↓ improving" : t.trend_slope > 0.002 ? "↑ worsening" : "→ stable"}</td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function HousingCharts({ data }: { data: Record<string, unknown> }) {
   const byState = (data.burden_by_state ?? []) as Array<Record<string, unknown>>;
@@ -410,6 +583,149 @@ function CensusCharts({ data }: { data: Record<string, unknown> }) {
           </BarChart>
         </ResponsiveContainer>
       </div>
+    </div>
+  );
+}
+
+type WBSeries = {
+  code: string;
+  label: string;
+  unit: string;
+  category: string;
+  data: Array<{ year: number; country: string; label: string; value: number }>;
+};
+
+function WorldBankCharts({ data }: { data: Record<string, unknown> }) {
+  const indicators = (data.indicators ?? []) as WBSeries[];
+  const countries = (data.countries ?? []) as string[];
+  const countryNames = (data.country_names ?? {}) as Record<string, string>;
+  const snapshot = (data.latest_snapshot ?? []) as Array<Record<string, unknown>>;
+
+  const COUNTRY_COLORS = ["#6366f1","#10b981","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f97316","#84cc16"];
+
+  function pivotSeries(series: WBSeries) {
+    const years = [...new Set(series.data.map((d) => d.year))].sort((a, b) => a - b);
+    return years.map((y) => {
+      const row: Record<string, unknown> = { year: y };
+      countries.forEach((iso) => {
+        const pt = series.data.find((d) => d.year === y && d.country === iso);
+        if (pt) row[iso] = pt.value;
+      });
+      return row;
+    });
+  }
+
+  function fmtValue(value: number, unit: string): string {
+    if (unit.includes("USD")) return `$${value.toLocaleString()}`;
+    if (unit.includes("%")) return `${value.toFixed(1)}%`;
+    if (unit === "people") {
+      if (value > 1e9) return `${(value / 1e9).toFixed(1)}B`;
+      if (value > 1e6) return `${(value / 1e6).toFixed(0)}M`;
+      return value.toLocaleString();
+    }
+    return value.toFixed(1);
+  }
+
+  function yTickFmt(unit: string) {
+    return (v: number) => {
+      if (unit.includes("USD")) return `$${(v / 1000).toFixed(0)}k`;
+      if (unit.includes("%")) return `${v}%`;
+      if (unit === "people") {
+        if (v > 1e9) return `${(v / 1e9).toFixed(1)}B`;
+        if (v > 1e6) return `${(v / 1e6).toFixed(0)}M`;
+        return String(v);
+      }
+      return String(v);
+    };
+  }
+
+  if (!indicators.length) {
+    return (
+      <div className="card p-8 text-center text-slate-500 text-sm">No indicator data returned.</div>
+    );
+  }
+
+  const solo = indicators.length === 1;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        {indicators.map((series) => {
+          const pivoted = pivotSeries(series);
+          return (
+            <div key={series.code} className={`card p-5 ${solo ? "col-span-2" : ""}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="text-sm font-semibold text-slate-200">{series.label}</h3>
+                <span className="badge bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 text-xs ml-auto">
+                  live · World Bank
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mb-4">
+                {series.unit} — {series.code}
+              </p>
+              <ResponsiveContainer width="100%" height={solo ? 260 : 210}>
+                <LineChart data={pivoted}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis dataKey="year" tick={{ fill: "#94a3b8", fontSize: 10 }} />
+                  <YAxis tickFormatter={yTickFmt(series.unit)} tick={{ fill: "#94a3b8", fontSize: 10 }} />
+                  <Tooltip
+                    formatter={(v: number, name: string) => [fmtValue(v, series.unit), countryNames[name] ?? name]}
+                    contentStyle={{ background: "#1e293b", border: "1px solid #334155" }}
+                  />
+                  <Legend formatter={(iso: string) => countryNames[iso] ?? iso} />
+                  {countries.map((iso, i) => (
+                    <Line
+                      key={iso}
+                      type="monotone"
+                      dataKey={iso}
+                      name={iso}
+                      stroke={COUNTRY_COLORS[i % COUNTRY_COLORS.length]}
+                      strokeWidth={2}
+                      dot={false}
+                      connectNulls
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Latest-value snapshot table — only useful when multiple indicators */}
+      {snapshot.length > 0 && indicators.length > 1 && (
+        <div className="card p-5 overflow-auto">
+          <h3 className="text-sm font-semibold text-slate-200 mb-3">Latest Snapshot by Country</h3>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-slate-700">
+                <th className="text-left py-2 pr-4 font-medium text-slate-300">Country</th>
+                {indicators.map((s) => (
+                  <th key={s.code} className="text-right py-2 px-2 font-medium text-slate-300 whitespace-nowrap">
+                    {s.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {snapshot.map((row) => (
+                <tr key={String(row.country)} className="border-b border-slate-800 hover:bg-slate-800/30">
+                  <td className="py-2 pr-4 font-medium text-slate-200">
+                    {String(row.name ?? row.country)}
+                  </td>
+                  {indicators.map((s) => (
+                    <td key={s.code} className="text-right py-2 px-2 tabular-nums text-slate-400">
+                      {row[s.code] != null
+                        ? fmtValue(Number(row[s.code]), s.unit)
+                        : <span className="text-slate-600">—</span>}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

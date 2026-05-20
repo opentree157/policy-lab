@@ -2,7 +2,7 @@
 
 **Cloud-based reproducible research platform for public policy datasets.**
 
-Run housing, labor, and demographic analyses reproducibly in the cloud —
+Run housing, labor, demographic, and live World Bank analyses reproducibly —
 backed by Ray distributed compute, full observability, and a locked
 reproducibility manifest on every run.
 
@@ -12,10 +12,10 @@ reproducibility manifest on every run.
 
 A researcher can:
 
-1. **Browse datasets** — ACS housing, BLS labor, Census, CMS Medicare, MIT elections, World Bank climate, HUD FMR
-2. **Submit experiments** — choose a dataset + analysis type + parameters
-3. **Distributed execution** — job dispatches to a Ray worker process with full CPU/memory profiling
-4. **Track results** — live-updating job logs, CPU/memory charts over runtime, structured output artifacts
+1. **Browse datasets** — ACS housing, BLS labor, Census, World Bank, HUD FMR, and more
+2. **Submit experiments** — choose a dataset, analysis type, and parameters (or pick live World Bank indicators from a curated catalog)
+3. **Distributed execution** — job dispatches to a Ray worker process with real CPU/memory profiling
+4. **Track results** — live-updating job logs, CPU/memory charts over runtime, structured output visualizations
 5. **Reproduce any run** — every experiment locks git commit, environment hash, dataset version, parameter fingerprint, and Python version
 
 ---
@@ -119,11 +119,28 @@ The backend also records at the experiment level:
 - `dataset_version` — hash of the dataset identifier
 - `container_image` — Docker image tag
 
-Re-running with the same manifest + parameters produces byte-identical results (analyses use seeded random generators).
+Re-running with the same manifest + parameters produces byte-identical results for seeded analyses. World Bank runs fetch live data, so results reflect whatever the API returns at execution time — the manifest records exactly which indicators and parameters were used.
 
 ---
 
 ## Available analyses
+
+### World Bank Development & Climate Indicators — live data
+- Source: [World Bank Open Data API](https://data.worldbank.org/) via `wbgapi` (no API key required)
+- Researcher picks any combination of indicators from a curated catalog of 18 across 6 categories
+- Returns one time-series chart per indicator (pivoted by country) + a latest-snapshot comparison table
+- Parameters: `countries`, `year_start`, `year_end`, `indicators` (list of WB codes)
+
+**Indicator catalog:**
+
+| Category | Indicators |
+|---|---|
+| Economy | GDP per capita, GDP growth, Inflation, Government debt, Trade openness |
+| Social | GINI inequality, Unemployment, Urban population, Fertility rate |
+| Health | Life expectancy, Child mortality, Health expenditure |
+| Education | Education expenditure, Internet users |
+| Energy & Climate | Energy use per capita, Renewable energy share, Electricity access |
+| Demographics | Total population |
 
 ### Housing Affordability
 - Source: American Housing Survey (ACS)
@@ -182,7 +199,7 @@ policy-lab/
 │   │   └── routers/         # experiments · jobs · datasets · metrics
 │   └── worker/
 │       ├── runner.py        # Ray remote task + thread-pool fallback
-│       └── analyses/        # housing · labor · census
+│       └── analyses/        # housing · labor · census · world_bank
 ├── frontend/
 │   └── src/
 │       ├── pages/           # Dashboard · Datasets · NewExperiment · ExperimentDetail

@@ -15,10 +15,15 @@ info()  { echo -e "${CYAN}[policylab]${RESET} $*"; }
 ok()    { echo -e "${GREEN}[policylab]${RESET} $*"; }
 err()   { echo -e "${RED}[policylab]${RESET} $*"; exit 1; }
 
+BACKEND_PID=""
+FRONTEND_PID=""
+
 cleanup() {
   info "Shutting down…"
-  kill "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true
-  wait "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true
+  [[ -n "$BACKEND_PID" ]]  && kill "$BACKEND_PID"  2>/dev/null || true
+  [[ -n "$FRONTEND_PID" ]] && kill "$FRONTEND_PID" 2>/dev/null || true
+  [[ -n "$BACKEND_PID" ]]  && wait "$BACKEND_PID"  2>/dev/null || true
+  [[ -n "$FRONTEND_PID" ]] && wait "$FRONTEND_PID" 2>/dev/null || true
   ok "Done."
 }
 trap cleanup INT TERM EXIT
@@ -84,6 +89,9 @@ echo ""
 tail -f "$ROOT/backend.log" "$ROOT/frontend.log" &
 TAIL_PID=$!
 
-# Wait for either process to die
-wait -n "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true
+# wait -n requires bash 4.3+ (macOS ships 3.2), so poll instead
+while kill -0 "$BACKEND_PID" 2>/dev/null && kill -0 "$FRONTEND_PID" 2>/dev/null; do
+  sleep 2
+done
+
 kill "$TAIL_PID" 2>/dev/null || true

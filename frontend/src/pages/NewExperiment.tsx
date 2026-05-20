@@ -1,27 +1,37 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowRight, FlaskConical, Info } from "lucide-react";
+import { ArrowRight, FlaskConical, Info, Check } from "lucide-react";
 import { api, type ExperimentCreate } from "../api/client";
 
 const ANALYSIS_OPTIONS = [
   {
     value: "housing_affordability",
     label: "Housing Affordability Analysis",
-    description: "Compute cost burden rates by income quintile, state, and year using ACS data.",
+    description: "Fetch real ACS B25070 data from the Census Bureau API — cost burden rates by state and year, distributed across parallel workers.",
     datasets: ["acs-housing", "hud-fmr"],
+    live: true,
   },
   {
     value: "labor_trends",
     label: "Labor Market Trends",
     description: "Analyze unemployment rates by sector using BLS Current Population Survey.",
     datasets: ["bls-unemployment"],
+    live: false,
   },
   {
     value: "census_demographics",
     label: "Census Demographic Profile",
     description: "Population distribution, age structure, and demographic composition.",
     datasets: ["census-demographics"],
+    live: false,
+  },
+  {
+    value: "world_bank_indicators",
+    label: "World Bank Development & Climate Indicators",
+    description: "Live data from the World Bank Open Data API — GDP, CO₂, renewable energy, and inequality across countries.",
+    datasets: ["world-bank-climate"],
+    live: true,
   },
 ];
 
@@ -158,8 +168,15 @@ export default function NewExperiment() {
                   }
                   className="mt-0.5 accent-brand-500"
                 />
-                <div>
-                  <p className="text-sm font-medium text-slate-200">{opt.label}</p>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-slate-200">{opt.label}</p>
+                    {opt.live && (
+                      <span className="badge bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 text-xs">
+                        live data
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-slate-500 mt-0.5">{opt.description}</p>
                 </div>
               </label>
@@ -170,8 +187,18 @@ export default function NewExperiment() {
           )}
         </div>
 
-        {/* Dynamic parameter preview */}
-        {selectedAnalysis && (
+        {/* World Bank indicator picker */}
+        {form.analysis_type === "world_bank_indicators" && (
+          <IndicatorPicker
+            selected={(form.parameters.indicators as string[]) ?? []}
+            onChange={(indicators) =>
+              setForm((f) => ({ ...f, parameters: { ...f.parameters, indicators } }))
+            }
+          />
+        )}
+
+        {/* Parameter preview for non-WB analyses */}
+        {selectedAnalysis && form.analysis_type !== "world_bank_indicators" && (
           <div className="card p-4 border-brand-500/20 bg-brand-500/5">
             <div className="flex items-center gap-2 mb-2">
               <Info className="w-3.5 h-3.5 text-brand-400" />
@@ -180,9 +207,6 @@ export default function NewExperiment() {
             <pre className="text-xs text-slate-400 font-mono overflow-auto max-h-32">
               {JSON.stringify(form.parameters, null, 2)}
             </pre>
-            <p className="text-xs text-slate-600 mt-2">
-              Custom parameter overrides — full UI coming soon. These defaults produce a complete run.
-            </p>
           </div>
         )}
 
@@ -239,7 +263,104 @@ function defaultParams(analysisType: string): Record<string, unknown> {
         states: ["CA", "TX", "FL", "NY", "PA", "IL", "OH", "GA", "NC", "MI"],
         breakdown: "age",
       };
+    case "world_bank_indicators":
+      return {
+        countries: ["USA", "CHN", "DEU", "GBR", "FRA", "JPN", "IND", "BRA"],
+        year_start: 2000,
+        year_end: 2022,
+        indicators: ["NY.GDP.PCAP.CD", "SL.UEM.TOTL.ZS", "SP.DYN.LE00.IN", "EG.FEC.RNEW.ZS"],
+      };
     default:
       return {};
   }
+}
+
+// ---------------------------------------------------------------------------
+// World Bank indicator picker
+// ---------------------------------------------------------------------------
+
+const CATEGORY_ORDER = ["Economy", "Social", "Health", "Education", "Energy & Climate", "Demographics"];
+
+function IndicatorPicker({
+  selected,
+  onChange,
+}: {
+  selected: string[];
+  onChange: (codes: string[]) => void;
+}) {
+  const { data: catalog = {} } = useQuery({
+    queryKey: ["wb-indicators"],
+    queryFn: api.datasets.wbIndicators,
+    staleTime: Infinity,
+  });
+
+  const byCategory = CATEGORY_ORDER.reduce<Record<string, Array<{ code: string; label: string; unit: string }>>>(
+    (acc, cat) => {
+      acc[cat] = Object.entries(catalog)
+        .filter(([, meta]) => meta.category === cat)
+        .map(([code, meta]) => ({ code, label: meta.label, unit: meta.unit }));
+      return acc;
+    },
+    {}
+  );
+
+  function toggle(code: string) {
+    onChange(
+      selected.includes(code)
+        ? selected.filter((c) => c !== code)
+        : [...selected, code]
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <label className="label mb-0">Indicators to fetch</label>
+        <span className="text-xs text-slate-500">{selected.length} selected</span>
+      </div>
+
+      {selected.length === 0 && (
+        <p className="text-xs text-amber-400">Select at least one indicator.</p>
+      )}
+
+      <div className="space-y-3">
+        {CATEGORY_ORDER.map((cat) => {
+          const items = byCategory[cat] ?? [];
+          if (!items.length) return null;
+          return (
+            <div key={cat}>
+              <p className="text-xs text-slate-500 uppercase tracking-widest mb-1.5">{cat}</p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {items.map(({ code, label, unit }) => {
+                  const on = selected.includes(code);
+                  return (
+                    <button
+                      key={code}
+                      type="button"
+                      onClick={() => toggle(code)}
+                      className={`flex items-start gap-2 px-3 py-2 rounded-lg border text-left transition-colors ${
+                        on
+                          ? "border-brand-500 bg-brand-500/10"
+                          : "border-slate-700 bg-slate-800/40 hover:border-slate-600"
+                      }`}
+                    >
+                      <div className={`mt-0.5 w-4 h-4 rounded flex items-center justify-center shrink-0 border ${
+                        on ? "bg-brand-600 border-brand-600" : "border-slate-600"
+                      }`}>
+                        {on && <Check className="w-2.5 h-2.5 text-white" />}
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-slate-200 leading-tight">{label}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{unit}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }

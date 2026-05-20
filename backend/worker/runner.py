@@ -60,14 +60,16 @@ def _run_job_core(
 ) -> Dict[str, Any]:
     """Execute the analysis and return a serialisable result dict."""
     # Import analyses here so they run in the worker process
-    from worker.analyses.housing import run_housing_affordability
+    from worker.analyses.housing_acs import run_housing_affordability
     from worker.analyses.labor import run_labor_trends
     from worker.analyses.census import run_census_demographics
+    from worker.analyses.world_bank import run_world_bank_indicators
 
     ANALYSES: Dict[str, Callable] = {
         "housing_affordability": run_housing_affordability,
         "labor_trends": run_labor_trends,
         "census_demographics": run_census_demographics,
+        "world_bank_indicators": run_world_bank_indicators,
     }
 
     start = time.time()

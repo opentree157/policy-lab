@@ -116,6 +116,7 @@ export const api = {
     list: () => request<Dataset[]>("/api/v1/datasets/"),
     get: (id: string) => request<Dataset>(`/api/v1/datasets/${id}`),
     templates: () => request<Record<string, unknown>>("/api/v1/datasets/analysis-templates"),
+    wbIndicators: () => request<Record<string, { label: string; unit: string; category: string }>>("/api/v1/datasets/wb-indicators"),
   },
   experiments: {
     list: () => request<Experiment[]>("/api/v1/experiments/"),

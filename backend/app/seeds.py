@@ -250,4 +250,28 @@ ANALYSIS_TEMPLATES = {
             },
         },
     },
+    "world_bank_indicators": {
+        "label": "World Bank Development & Climate Indicators",
+        "description": (
+            "Live data from the World Bank Open Data API. "
+            "GDP per capita, CO₂ emissions, renewable energy share, and inequality "
+            "for up to 20 countries over any date range."
+        ),
+        "compatible_datasets": ["world-bank-climate"],
+        "live_data": True,
+        "parameters": {
+            "countries": {
+                "type": "multiselect",
+                "label": "Countries (ISO-3 codes)",
+                "options": [
+                    "USA", "CHN", "DEU", "GBR", "FRA", "JPN", "IND", "BRA",
+                    "CAN", "AUS", "KOR", "MEX", "IDN", "SAU", "ZAF", "NGA",
+                    "ARG", "TUR", "SWE", "NOR",
+                ],
+                "default": ["USA", "CHN", "DEU", "GBR", "FRA", "JPN", "IND", "BRA"],
+            },
+            "year_start": {"type": "integer", "label": "Start Year", "default": 2000, "min": 1990, "max": 2020},
+            "year_end": {"type": "integer", "label": "End Year", "default": 2022, "min": 1991, "max": 2023},
+        },
+    },
 }

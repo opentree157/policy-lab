@@ -7,6 +7,7 @@ from app.database import get_db
 from app.models import Dataset
 from app.schemas import DatasetOut
 from app.seeds import ANALYSIS_TEMPLATES
+from worker.analyses.world_bank import AVAILABLE_INDICATORS
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -19,6 +20,12 @@ def list_datasets(db: Session = Depends(get_db)):
 @router.get("/analysis-templates", response_model=Dict[str, Any])
 def list_analysis_templates():
     return ANALYSIS_TEMPLATES
+
+
+@router.get("/wb-indicators", response_model=Dict[str, Any])
+def list_wb_indicators():
+    """Return the full curated World Bank indicator catalog."""
+    return AVAILABLE_INDICATORS
 
 
 @router.get("/{dataset_id}", response_model=DatasetOut)
